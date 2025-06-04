@@ -1,4 +1,4 @@
-```markdown
+
 # Enhancing LLM Code Understanding for Large Codebases
 
 ## Overview
@@ -162,4 +162,4 @@ Navigate to the frontend project root (e.g., `angular-ui`, where `angular.json` 
     *   `src/assets/`: Static assets.
     *   `src/environments/`: Environment-specific configurations.
 
-```
+
