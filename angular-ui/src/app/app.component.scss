@@ -1,0 +1,102 @@
+.app-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--background-color);
+}
+
+.app-toolbar {
+  background-color: var(--surface-color);
+  color: var(--text-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  z-index: 1000;
+  padding: 0 16px;
+  flex-shrink: 0;
+  height: 60px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+
+  .app-title {
+    font-weight: 600;
+    font-size: 1.15rem;
+    letter-spacing: 0.1px;
+    margin-left: 12px;
+    color: var(--primary-dark);
+  }
+
+  .toolbar-spacer {
+    flex: 1 1 auto;
+  }
+
+  .menu-button {
+    color: var(--text-secondary-color);
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+
+    mat-icon {
+      transition: transform 0.2s ease-in-out;
+    }
+
+    &:hover {
+      background-color: var(--primary-light) !important;
+      color: var(--primary-dark) !important;
+      box-shadow: none !important;
+      mat-icon {
+        transform: scale(1.1);
+      }
+    }
+    &:focus-visible {
+        outline: 2px solid var(--primary-color) !important;
+        outline-offset: 1px !important;
+        background-color: var(--primary-light) !important;
+        border-radius: 50%;
+    }
+  }
+}
+
+.app-sidenav-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.app-sidenav {
+  width: 280px;
+  min-width: 220px;
+  max-width: 400px;
+  border-right: 1px solid var(--border-color);
+  background-color: var(--surface-color);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--box-shadow-sm);
+  display: flex; // For internal layout
+  flex-direction: column; // For internal layout
+
+  &.sidenav-mobile {
+    width: 260px;
+    box-shadow: var(--box-shadow-lg);
+  }
+}
+
+.app-sidenav-content {
+  flex: 1;
+  background-color: var(--background-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media screen and (max-width: 768px) {
+  .app-toolbar {
+    padding: 0 12px;
+    height: 56px;
+    .app-title {
+      font-size: 1.05rem;
+    }
+  }
+  .app-sidenav {
+  }
+}

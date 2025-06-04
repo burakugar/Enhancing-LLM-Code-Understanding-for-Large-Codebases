@@ -43,5 +43,5 @@ public class VectorEntry {
      * if the DB returns it directly, otherwise, it might be omitted to save space
      * if the content can be retrieved via the ID from another source (e.g., CodeSegment cache).
      */
-    private String document; // Corresponds to ChromaDB's 'document'
+    private String document;
 } 

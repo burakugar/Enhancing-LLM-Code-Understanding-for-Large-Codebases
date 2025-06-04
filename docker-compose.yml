@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # If you have an NVIDIA GPU and want to enable GPU acceleration for Ollama:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1 # or 'all'
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "ps"] # A simple check to see if ollama process is running
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s # Give ollama some time to start up before health checking
+
+volumes:
+  chroma_data:
+  ollama_data: 

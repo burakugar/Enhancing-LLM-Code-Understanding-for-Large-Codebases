@@ -1,0 +1,62 @@
+<div class="codebase-settings-container">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>Codebase Indexing</mat-card-title>
+      <mat-card-subtitle>Specify the path to your local codebase to enable context-aware assistance.</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="codebaseForm" (ngSubmit)="onStartIndexing()" class="settings-form">
+        <p class="info-text">
+          Enter the absolute path to the root directory of your code repository.
+          The application will scan and index supported files within this directory.
+        </p>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Codebase Path</mat-label>
+          <input matInput formControlName="codebasePath" placeholder="/path/to/your/project" required>
+          <mat-icon matSuffix>folder_open</mat-icon>
+          <mat-error *ngIf="codebaseForm.get('codebasePath')?.hasError('required')">
+            Codebase path is required.
+          </mat-error>
+          <mat-error *ngIf="codebaseForm.get('codebasePath')?.hasError('minlength')">
+            Path seems too short.
+          </mat-error>
+        </mat-form-field>
+
+        <button mat-raised-button color="primary" type="submit"
+                [disabled]="isLoading || codebaseForm.invalid || (indexingStatus && (indexingStatus.status === 'RUNNING' || indexingStatus.status === 'STARTED'))"
+                class="full-width index-button">
+          <span *ngIf="!(isLoading || (indexingStatus && (indexingStatus.status === 'RUNNING' || indexingStatus.status === 'STARTED')))">
+            <mat-icon>sync</mat-icon> Start/Update Index
+          </span>
+          <span *ngIf="isLoading && !(indexingStatus && (indexingStatus.status === 'RUNNING' || indexingStatus.status === 'STARTED'))">
+            <mat-spinner diameter="20" class="button-spinner"></mat-spinner> Starting...
+          </span>
+          <span *ngIf="indexingStatus && (indexingStatus.status === 'RUNNING' || indexingStatus.status === 'STARTED')">
+            <mat-spinner diameter="20" class="button-spinner"></mat-spinner> Indexing in Progress...
+          </span>
+        </button>
+      </form>
+
+      <div *ngIf="indexingStatus" class="status-display">
+        <h4>Current Indexing Status:</h4>
+        <p [ngClass]="{
+            'status-idle': indexingStatus.status === 'IDLE',
+            'status-running': indexingStatus.status === 'RUNNING' || indexingStatus.status === 'STARTED',
+            'status-completed': indexingStatus.status === 'COMPLETED',
+            'status-failed': indexingStatus.status === 'FAILED'
+          }">
+          <mat-icon *ngIf="indexingStatus.status === 'IDLE'">hourglass_empty</mat-icon>
+          <mat-icon *ngIf="indexingStatus.status === 'RUNNING' || indexingStatus.status === 'STARTED'" class="spin-icon">autorenew</mat-icon>
+          <mat-icon *ngIf="indexingStatus.status === 'COMPLETED'">check_circle</mat-icon>
+          <mat-icon *ngIf="indexingStatus.status === 'FAILED'">error</mat-icon>
+          {{ progressDetails }}
+        </p>
+        <mat-progress-bar *ngIf="showProgressBar"
+                          mode="determinate"
+                          [value]="progressValue"
+                          color="primary">
+        </mat-progress-bar>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

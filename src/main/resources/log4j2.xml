@@ -2,11 +2,13 @@
 <Configuration status="WARN">
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <!-- Updated pattern: %c{1} for concise logger name (usually simple class name) -->
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %c{1} - %msg%n"/>
         </Console>
         <RollingFile name="RollingFile" fileName="logs/app.log"
                      filePattern="logs/app-%d{yyyy-MM-dd}-%i.log.gz">
             <PatternLayout>
+                <!-- File pattern remains more detailed with %logger{36} -->
                 <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n</pattern>
             </PatternLayout>
             <Policies>
@@ -21,17 +23,54 @@
             <AppenderRef ref="Console"/>
             <AppenderRef ref="RollingFile"/>
         </Root>
+
+        <!-- Main application logger -->
+        <!-- Set to DEBUG to see detailed logs from services like IndexingServiceImpl -->
         <Logger name="com.localllm.assistant" level="debug" additivity="false">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="RollingFile"/>
         </Logger>
+
+        <!-- Example: Specific logger for IndexingServiceImpl if its DEBUG logs are too verbose -->
+        <!-- but you want the rest of com.localllm.assistant at INFO -->
+        <Logger name="com.localllm.assistant.service.impl.IndexingServiceImpl" level="trace" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Logger> -->
+
+        <!-- Spring framework logs - INFO is usually sufficient -->
         <Logger name="org.springframework" level="info" additivity="false">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="RollingFile"/>
         </Logger>
+
+        <!-- Hibernate logs - INFO is good. Set to DEBUG/TRACE for SQL statements and parameters -->
         <Logger name="org.hibernate" level="info" additivity="false">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="RollingFile"/>
         </Logger>
+        <!-- To see SQL statements from Hibernate: -->
+        <!-- <Logger name="org.hibernate.SQL" level="debug" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Logger> -->
+        <!-- To see SQL parameters: -->
+        <!-- <Logger name="org.hibernate.type.descriptor.sql" level="trace" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Logger> -->
+
+        <!-- Apache HTTP Client logging (used by OllamaClientImpl and ChromaDBClientImpl) -->
+        <!-- Set to INFO by default. Change to DEBUG for headers, TRACE for wire logs. -->
+        <Logger name="org.apache.hc.client5" level="info" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Logger>
+        <!-- For very verbose wire logs (actual request/response content), use with caution: -->
+        <!-- <Logger name="org.apache.hc.client5.http.wire" level="trace" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </Logger> -->
+
     </Loggers>
-</Configuration> 
+</Configuration>

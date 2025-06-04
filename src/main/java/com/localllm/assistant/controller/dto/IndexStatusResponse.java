@@ -9,8 +9,8 @@ import lombok.Data;
 @Data
 @Builder
 public class IndexStatusResponse {
-    private String jobId; // If tracking specific jobs
-    private String status; // e.g., IDLE, RUNNING, STARTED, COMPLETED, FAILED
-    private double progress; // e.g., 0.75 for 75% complete
-    private String details; // Additional status information or error details
+    private String jobId;
+    private String status;
+    private double progress;
+    private String details;
 } 

@@ -1,13 +1,23 @@
 package com.localllm.assistant.controller.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
-/**
- * Request DTO for query operations.
- * Contains the user's query text and optional conversation ID for continuing an existing conversation.
- */
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class QueryRequest {
     private String query;
-    private String conversationId; // Optional
-} 
+    private String conversationId;
+    private Double temperature;
+    private Integer maxContextSegments;
+    private Double minSimilarityScore;
+    private Boolean useReRanker;
+    private Integer reRankerTopN;
+    private Integer llmMaxNewTokens;
+    private String modelName;
+    private String rerankerModelName;
+}

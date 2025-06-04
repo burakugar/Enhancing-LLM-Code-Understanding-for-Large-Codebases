@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * Initializes the Spring Boot application context.
  */
 @SpringBootApplication
-@EnableAsync // Necessary for using @Async annotations for background tasks
+@EnableAsync
 public class LocalLlmCodeAssistantApplication {
 
     /**
@@ -18,7 +18,6 @@ public class LocalLlmCodeAssistantApplication {
      * @param args Command line arguments passed to the application.
      */
     public static void main(String[] args) {
-        // Launch the Spring Boot application.
         SpringApplication.run(LocalLlmCodeAssistantApplication.class, args);
     }
 } 

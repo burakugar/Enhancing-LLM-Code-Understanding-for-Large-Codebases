@@ -1,103 +1,125 @@
 package com.localllm.assistant.config;
 
 import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.core5.util.TimeValue;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
+import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.util.Timeout;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.apache.hc.core5.util.TimeValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import jakarta.annotation.PreDestroy;
 import lombok.Getter;
-import lombok.Setter;
 
-/**
- * Configuration properties for connecting to the local Ollama service.
- */
+import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+
 @Configuration
-@ConfigurationProperties(prefix = "ollama") // Binds properties starting with 'ollama'
 @Getter
-@Setter // Lombok annotations for boilerplate reduction (or generate manually)
 public class OllamaConfig {
 
-    /**
-     * Base URL of the locally running Ollama service.
-     * Example: http://localhost:11434
-     */
-    private String baseUrl = "http://localhost:11434";
+    private static final Logger log = LoggerFactory.getLogger(OllamaConfig.class);
 
-    /**
-     * Name of the Ollama model to use for generating embeddings.
-     * Example: codellama:7b-instruct
-     */
-    private String embeddingModel = "codellama:7b-instruct";
+    // Base settings
+    private final String baseUrl = "http://localhost:11434";
+    private final String embeddingModel = "nomic-embed-text";
+    private final String chatModel = "mistral-openorca:latest";
 
-    /**
-     * Name of the Ollama model to use for generating chat/query responses.
-     * Example: llama3:8b-instruct
-     */
-    private String chatModel = "llama3:8b-instruct";
+    // 🚨 FIXED TIMEOUT SETTINGS - Connection Pool Issue Solved
+    private final int connectTimeoutMs = 60000;         // 1 dakika - yeterli
+    private final int socketTimeoutMs = 600000;         // 10 DAKİKA - embedding için bol
+    private final int connectionRequestTimeoutMs = 300000;  // 5 DAKİKA - pool'dan connection almak için
 
-    /**
-     * Connection timeout for Ollama API requests in milliseconds.
-     */
-    private int connectTimeoutMs = 5000; // 5 seconds
+    // 🔧 ENLARGED CONNECTION POOL - More connections available
+    private final int maxTotalConnections = 50;         // 10'dan 50'ye çıkardık
+    private final int maxConnectionsPerRoute = 25;      // 5'ten 25'e çıkardık
+    private final int connectionTimeToLiveMs = 1800000; // 30 dakika TTL (uzun)
+    private final int connectionIdleTimeMs = 300000;    // 5 dakika idle (uzun)
+    private final int validateAfterInactivityMs = 60000; // 1 dakika validation
 
-    /**
-     * Socket read timeout for Ollama API requests in milliseconds.
-     * Should be long enough for model generation.
-     */
-    private int socketTimeoutMs = 120000; // 120 seconds (2 minutes)
+    // ⚡ MORE IO THREADS
+    private final int ioThreadCount = 8;                // 4'ten 8'e çıkardık
+    private final boolean soKeepAlive = true;
+    private final boolean tcpNoDelay = true;
 
-    /**
-     * Maximum number of connections in the HTTP client pool.
-     */
-    private int maxTotalConnections = 50;
+    // Chat model settings
+    private final int chatModelMaxPromptTokens = 3000;
+    private final int chatModelDefaultNumPredict = 1024;
 
-    /**
-     * Maximum number of connections per route (to the Ollama base URL).
-     */
-    private int maxConnectionsPerRoute = 20;
+    private CloseableHttpAsyncClient sharedHttpAsyncClient;
 
-    /**
-     * Creates a configured Apache HttpClient 5 instance for communicating with Ollama.
-     * Uses a connection pool for efficiency.
-     *
-     * @return A CloseableHttpClient instance.
-     */
-    @Bean
-    public CloseableHttpClient ollamaHttpClient() {
-        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
-        connectionManager.setMaxTotal(maxTotalConnections);
+    @Bean(name = "sharedHttpAsyncClient")
+    public CloseableHttpAsyncClient sharedHttpAsyncClient() {
+        log.info("Creating FIXED CloseableHttpAsyncClient - Connection Pool Issue Solved");
+
+        // IO Reactor - More threads
+        final IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
+            .setSoTimeout(Timeout.ofMilliseconds(socketTimeoutMs))
+            .setIoThreadCount(ioThreadCount)
+            .setSoKeepAlive(soKeepAlive)
+            .setTcpNoDelay(tcpNoDelay)
+            .setSoReuseAddress(true)
+            .setSoLinger(TimeValue.ofSeconds(0))
+            .build();
+
+        // Connection Manager - BIGGER POOL
+        final PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManagerBuilder.create()
+            .setMaxConnTotal(maxTotalConnections)
+            .setMaxConnPerRoute(maxConnectionsPerRoute)
+            .setConnectionTimeToLive(TimeValue.ofMilliseconds(connectionTimeToLiveMs))
+            .setValidateAfterInactivity(TimeValue.ofMilliseconds(validateAfterInactivityMs))
+            .build();
+
         connectionManager.setDefaultMaxPerRoute(maxConnectionsPerRoute);
-        // Optional: Configure socket settings if needed
-        // connectionManager.setDefaultSocketConfig(SocketConfig.custom().setSoTimeout(TimeValue.ofMilliseconds(socketTimeoutMs)).build());
 
-        RequestConfig requestConfig = RequestConfig.custom()
-                .setConnectTimeout((Timeout) TimeValue.ofMilliseconds(connectTimeoutMs))
-                .setConnectionRequestTimeout((Timeout) TimeValue.ofMilliseconds(connectTimeoutMs)) // Timeout waiting for conn from pool
-                // Socket timeout is often set per-request, but can be defaulted here
-                // .setResponseTimeout(TimeValue.ofMilliseconds(socketTimeoutMs)) // Use setResponseTimeout in HttpClient 5.x
-                .build();
+        // Request Config - LONGER TIMEOUTS
+        final RequestConfig requestConfig = RequestConfig.custom()
+            .setConnectTimeout(Timeout.ofMilliseconds(connectTimeoutMs))
+            .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectionRequestTimeoutMs)) // 5 DAKİKA!
+            .setResponseTimeout(Timeout.ofMilliseconds(socketTimeoutMs))
+            .setRedirectsEnabled(false)
+            .setCircularRedirectsAllowed(false)
+            .setMaxRedirects(0)
+            .build();
 
-        return HttpClients.custom()
-                .setConnectionManager(connectionManager)
-                .setDefaultRequestConfig(requestConfig)
-                // Optional: Add interceptors, retry handlers, etc.
-                .build();
+        // HTTP Client
+        sharedHttpAsyncClient = HttpAsyncClients.custom()
+            .setIOReactorConfig(ioReactorConfig)
+            .setConnectionManager(connectionManager)
+            .setDefaultRequestConfig(requestConfig)
+            .evictExpiredConnections()
+            .evictIdleConnections(TimeValue.of(connectionIdleTimeMs, TimeUnit.MILLISECONDS))
+            .disableAutomaticRetries()
+            .disableCookieManagement()
+            .disableRedirectHandling()
+            .build();
+
+        sharedHttpAsyncClient.start();
+
+        log.info("FIXED CloseableHttpAsyncClient started: " +
+                "connectTimeout={}s, socketTimeout={}s, connectionRequestTimeout={}s, " +
+                "maxConnections={}, maxPerRoute={}, ioThreads={}",
+            connectTimeoutMs/1000, socketTimeoutMs/1000, connectionRequestTimeoutMs/1000,
+            maxTotalConnections, maxConnectionsPerRoute, ioThreadCount);
+
+        return sharedHttpAsyncClient;
     }
 
-    // toString() method for logging configuration (Lombok can generate this)
-    @Override
-    public String toString() {
-        return "OllamaConfig{" +
-               "baseUrl='" + baseUrl + '\'' +
-               ", embeddingModel='" + embeddingModel + '\'' +
-               ", chatModel='" + chatModel + '\'' +
-               ", connectTimeoutMs=" + connectTimeoutMs +
-               ", socketTimeoutMs=" + socketTimeoutMs +
-               '}';
+    @PreDestroy
+    public void closeHttpClient() {
+        if (sharedHttpAsyncClient != null) {
+            log.info("Closing shared CloseableHttpAsyncClient...");
+            try {
+                sharedHttpAsyncClient.close();
+                log.info("Shared CloseableHttpAsyncClient closed gracefully.");
+            } catch (IOException e) {
+                log.error("Error closing shared CloseableHttpAsyncClient", e);
+            }
+        }
     }
-} 
+}

@@ -1,0 +1,93 @@
+<div class="conversation-list-container">
+  <div class="conversation-list-header">
+    <h2>Conversations</h2>
+    <div class="header-actions">
+      <button mat-mini-fab color="primary" class="new-chat-button" (click)="startNewChat()" *ngIf="!isLoading" aria-label="New chat">
+        <mat-icon>add</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="search-container">
+    <mat-form-field appearance="outline" class="search-field">
+      <mat-icon matPrefix class="search-icon">search</mat-icon>
+      <input matInput placeholder="Search conversations" [(ngModel)]="searchTerm" (input)="onSearchTermChange(searchTerm)">
+      <button
+        *ngIf="searchTerm"
+        matSuffix
+        mat-icon-button
+        aria-label="Clear"
+        (click)="clearSearch()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </mat-form-field>
+  </div>
+
+  <div *ngIf="isLoading && conversations.length === 0" class="loading-container">
+    <mat-spinner diameter="40"></mat-spinner>
+    <p>Loading conversations...</p>
+  </div>
+
+  <div *ngIf="error" class="error-message">
+    <mat-icon color="warn">error_outline</mat-icon>
+    <span>{{ error }}</span>
+    <button mat-icon-button (click)="loadConversations()" aria-label="Retry loading conversations">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </div>
+
+  <div *ngIf="conversations.length === 0 && !isLoading && !error" class="empty-state">
+    <mat-icon>chat_bubble_outline</mat-icon>
+    <h3>No conversations yet</h3>
+    <p>Start a new chat to get going</p>
+    <button mat-stroked-button color="primary" class="new-chat-button" (click)="startNewChat()" *ngIf="!isLoading" aria-label="New chat">
+      <mat-icon>add_circle_outline</mat-icon> New Chat
+    </button>
+  </div>
+
+  <div class="conversation-list" *ngIf="!isLoading || filteredConversations.length > 0">
+    <div *ngIf="filteredConversations.length === 0 && searchTerm" class="no-results">
+      <mat-icon>search_off</mat-icon>
+      <p>No conversations found</p>
+      <button mat-stroked-button color="primary" (click)="clearSearch()">Clear Search</button>
+    </div>
+
+    <mat-nav-list>
+      <a mat-list-item
+         *ngFor="let conv of filteredConversations; let i = index"
+         (click)="selectConversation(conv.conversationId)"
+         [class.selected-conversation]="conv.conversationId === currentConversationId"
+         class="conversation-item">
+        <div class="conversation-icon">
+          <mat-icon>chat</mat-icon>
+        </div>
+        <div class="conversation-details">
+          <div class="conversation-title" [matTooltip]="conv.title || getFirstMessage(conv)">
+            {{ conv.title || getFirstMessage(conv) | slice:0:35 }}{{ (conv.title && conv.title.length > 35) || (!conv.title && getFirstMessage(conv).length > 35) ? '...' : '' }}
+          </div>
+          <div class="conversation-subtitle" *ngIf="conv.messages && conv.messages.length > 0">
+            <span class="message-preview">
+              {{ getLastMessagePreview(conv) }}
+            </span>
+            <span class="conversation-timestamp">{{ getTimestamp(conv) | date:'MMM d' }}</span>
+          </div>
+        </div>
+        <div class="conversation-actions">
+          <button mat-icon-button
+                  (click)="confirmDeleteConversation(conv.conversationId, $event)"
+                  aria-label="Delete conversation"
+                  class="delete-button">
+            <mat-icon>delete_outline</mat-icon>
+          </button>
+        </div>
+      </a>
+    </mat-nav-list>
+  </div>
+
+  <div class="list-actions" *ngIf="conversations.length > 1 && !isLoading">
+    <button mat-stroked-button color="warn" (click)="confirmDeleteAllConversations()" aria-label="Delete all conversations">
+      <mat-icon>delete_forever</mat-icon>
+      Clear All
+    </button>
+  </div>
+</div>

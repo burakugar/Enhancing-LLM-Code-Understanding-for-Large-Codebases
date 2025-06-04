@@ -1,0 +1,21 @@
+<div class="app-container">
+  <mat-toolbar class="app-toolbar">
+    <button mat-icon-button class="menu-button" (click)="sidenav.toggle()" aria-label="Toggle sidenav">
+      <mat-icon>{{ (isDesktop$ | async) && sidenav.opened ? 'menu_open' : 'menu' }}</mat-icon>
+    </button>
+    <span class="app-title">Local LLM Code Assistant</span>
+    <div class="toolbar-spacer"></div>
+    <button mat-icon-button routerLink="/codebase-settings" aria-label="Codebase Settings" matTooltip="Codebase Settings" class="menu-button">
+      <mat-icon>folder_managed</mat-icon>
+    </button>
+  </mat-toolbar>
+
+  <mat-sidenav-container class="app-sidenav-container">
+    <mat-sidenav #sidenav mode="side" [opened]="(isDesktop$ | async)" class="app-sidenav" [ngClass]="{'sidenav-mobile': !(isDesktop$ | async)}">
+      <app-conversation-list></app-conversation-list>
+    </mat-sidenav>
+    <mat-sidenav-content class="app-sidenav-content">
+      <router-outlet></router-outlet>
+    </mat-sidenav-content>
+  </mat-sidenav-container>
+</div>

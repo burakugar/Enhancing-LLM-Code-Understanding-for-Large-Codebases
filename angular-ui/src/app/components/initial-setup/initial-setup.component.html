@@ -1,0 +1,48 @@
+<div class="setup-container">
+  <h2>Initial Application Setup</h2>
+  <p class="subtitle">Please select a model to proceed. API Key is no longer required for local setup.</p>
+
+  <div *ngIf="isCheckingStatus" class="status-checker">
+    <mat-spinner diameter="50"></mat-spinner>
+    <p>Checking current configuration...</p>
+  </div>
+
+  <form [formGroup]="setupForm" (ngSubmit)="onSubmit()" *ngIf="!isCheckingStatus">
+    <mat-card class="setup-card">
+      <mat-card-header>
+        <mat-card-title>LLM Configuration</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <p *ngIf="error" class="error-message">
+          <mat-icon color="warn">error_outline</mat-icon> {{ error }}
+        </p>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Select LLM Model</mat-label>
+          <mat-select formControlName="modelId" required>
+            <mat-option *ngFor="let model of availableModels" [value]="model.id">
+              {{ model.name }}
+            </mat-option>
+          </mat-select>
+          <mat-error *ngIf="setupForm.get('modelId')?.hasError('required')">
+            Model selection is required.
+          </mat-error>
+        </mat-form-field>
+
+        <p class="setup-info">
+          This setup configures the application to use your locally running LLM (e.g., Ollama).
+          Ensure your local LLM service is operational.
+        </p>
+
+      </mat-card-content>
+      <mat-card-actions align="end">
+        <button mat-raised-button color="primary" type="submit" [disabled]="setupForm.invalid || isLoading">
+          <span *ngIf="!isLoading">Save and Proceed</span>
+          <span *ngIf="isLoading">
+            <mat-spinner diameter="20" class="button-spinner"></mat-spinner> Saving...
+          </span>
+        </button>
+      </mat-card-actions>
+    </mat-card>
+  </form>
+</div>

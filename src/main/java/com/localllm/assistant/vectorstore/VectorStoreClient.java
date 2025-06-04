@@ -71,4 +71,13 @@ public interface VectorStoreClient {
      * @return a CompletableFuture with the count of embeddings
      */
     CompletableFuture<Long> countEmbeddingsAsync(String collectionName);
+
+
+    /**
+     * Clears any cached information for a specific collection name,
+     * such as its UUID. This forces a fresh lookup on the next operation.
+     *
+     * @param collectionName the name of the collection whose cache should be cleared.
+     */
+    void clearCacheForCollection(String collectionName);
 } 

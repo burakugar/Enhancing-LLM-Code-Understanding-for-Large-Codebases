@@ -2,9 +2,16 @@ package com.localllm.assistant.service.impl;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -12,12 +19,16 @@ import com.localllm.assistant.config.AsyncConfig;
 import com.localllm.assistant.config.ChromaDBConfig;
 import com.localllm.assistant.embedding.EmbeddingService;
 import com.localllm.assistant.parser.ParserService;
+import com.localllm.assistant.parser.model.CodeSegment;
 import com.localllm.assistant.service.FileMonitorService;
 import com.localllm.assistant.service.UpdateService;
 import com.localllm.assistant.vectorstore.VectorStoreClient;
 import com.localllm.assistant.vectorstore.model.VectorEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -36,17 +47,60 @@ public class UpdateServiceImpl implements UpdateService {
     private final ParserService parserService;
     private final EmbeddingService embeddingService;
     private final VectorStoreClient vectorStoreClient;
-    private final FileMonitorService fileMonitorService; // To get base path
     private final ChromaDBConfig chromaDBConfig;
+    
+    // Use Field Injection with @Lazy to break the cycle
+    @Autowired
+    @Lazy
+    private FileMonitorService fileMonitorService; // No longer final
+    
+    // Debouncing configuration
+    @Value("${update.debounce.delay.ms:1000}")
+    private long debounceDelayMs;
+
+    private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "UpdateDebouncerThread");
+        t.setDaemon(true);
+        return t;
+    });
+    private final ConcurrentMap<Path, ScheduledFuture<?>> debouncedTasks = new ConcurrentHashMap<>();
 
     @Override
-    @Async(AsyncConfig.TASK_EXECUTOR_FILE_MONITOR) // Use file monitor executor for quick tasks
     public void handleFileChange(Path filePath, FileMonitorService.ChangeType changeType) {
-        log.info("Handling file change: Type={}, Path={}", changeType, filePath);
-        Path basePath = fileMonitorService.getMonitoredPath();
+        log.debug("Received file change event: Type={}, Path={}", changeType, filePath);
+
+        ScheduledFuture<?> existingTask = debouncedTasks.remove(filePath);
+        if (existingTask != null) {
+            existingTask.cancel(false);
+            log.trace("Cancelled previous debounced task for {}", filePath);
+        }
+
+        ScheduledFuture<?> newTask = debounceExecutor.schedule(() -> {
+            try {
+                log.info("Executing debounced update for: Type={}, Path={}", changeType, filePath);
+                debouncedTasks.remove(filePath);
+                processFileChangeInternal(filePath, changeType).join(); // Execute and wait
+            } catch (Exception e) {
+                 log.error("Error during debounced processing of {}: {}", filePath, e.getMessage(), e);
+            }
+        }, debounceDelayMs, TimeUnit.MILLISECONDS);
+
+        debouncedTasks.put(filePath, newTask);
+        log.trace("Scheduled debounced task for {}", filePath);
+    }
+
+    @Async(AsyncConfig.TASK_EXECUTOR_FILE_MONITOR)
+    protected CompletableFuture<Void> processFileChangeInternal(Path filePath, FileMonitorService.ChangeType changeType) {
+        // Ensure fileMonitorService is injected before proceeding
+        if (fileMonitorService == null) {
+             log.error("FileMonitorService is null! Circular dependency not fully resolved?");
+             return CompletableFuture.failedFuture(new IllegalStateException("FileMonitorService not injected"));
+        }
+
+        Path basePath = fileMonitorService.getMonitoredPath(); // Now access the injected field
         if (basePath == null) {
             log.error("Base path not available from FileMonitorService. Cannot process change for {}", filePath);
-            return;
+            return CompletableFuture.failedFuture(new IllegalStateException("Base path not configured"));
         }
         String collectionName = chromaDBConfig.getDefaultCollectionName();
         String relativePath = basePath.relativize(filePath).toString().replace('\\', '/');
@@ -55,80 +109,90 @@ public class UpdateServiceImpl implements UpdateService {
             case CREATE:
             case MODIFY:
                 if (!Files.exists(filePath)) {
-                    log.warn("File {} reported as {} but does not exist. Assuming delete or rapid change.", filePath, changeType);
-                    // Treat as delete if it doesn't exist shortly after event
-                    handleFileDelete(collectionName, relativePath);
-                    return;
+                    log.warn("File {} reported as {} but does not exist during debounced processing. Treating as DELETE.", filePath, changeType);
+                    return handleFileDelete(collectionName, relativePath);
                 }
                 log.debug("Processing CREATE/MODIFY for {}", relativePath);
-                parserService.parseFileAsync(filePath, basePath)
-                    .thenCompose(segments -> {
-                        if (segments == null || segments.isEmpty()) {
-                            log.info("No segments parsed from {}. If file modified to be empty, existing entries might remain. Consider deletion.", relativePath);
-                            // Optional: If MODIFY resulted in empty segments, treat as delete?
-                            // handleFileDelete(collectionName, relativePath);
-                            return CompletableFuture.completedFuture(null); // Indicate no further action needed for embedding/upsert
-                        }
-                        return embeddingService.generateEmbeddingsAsync(segments)
-                            .thenAccept(embeddings -> {
-                                if (embeddings == null || embeddings.size() != segments.size()) {
-                                    log.error("Mismatch between segments ({}) and embeddings ({}) count for {}. Aborting upsert.", segments.size(), embeddings != null ? embeddings.size() : "null", relativePath);
-                                    throw new RuntimeException("Embedding count mismatch"); // Fail the future
-                                }
-                                List<VectorEntry> entries = IntStream.range(0, segments.size())
-                                    .filter(i -> embeddings.get(i) != null && !embeddings.get(i).isEmpty()) // Filter out failed embeddings
-                                    .mapToObj(i -> VectorEntry.builder()
-                                        .id(segments.get(i).getId())
-                                        .embedding(embeddings.get(i))
-                                        .metadata(Map.of( // Ensure metadata matches VectorEntry needs
-                                            "filePath", segments.get(i).getRelativeFilePath(),
-                                            "startLine", segments.get(i).getStartLine(),
-                                            "endLine", segments.get(i).getEndLine(),
-                                            "type", segments.get(i).getType().name(),
-                                            "entityName", segments.get(i).getEntityName() != null ? segments.get(i).getEntityName() : ""
-                                        ))
-                                        .document(segments.get(i).getContent())
-                                        .build())
-                                    .collect(Collectors.toList());
-
-                                if (!entries.isEmpty()) {
-                                    log.debug("Upserting {} entries for {}", entries.size(), relativePath);
-                                    vectorStoreClient.upsertEmbeddingsAsync(collectionName, entries)
-                                        .exceptionally(ex -> {
-                                            log.error("Failed to upsert embeddings for {}: {}", relativePath, ex.getMessage());
-                                            return null; // Consume exception
-                                        });
-                                } else {
-                                     log.warn("No valid embeddings generated for segments in {}. Nothing to upsert.", relativePath);
-                                }
-                            });
-                    })
-                    .exceptionally(ex -> {
-                        log.error("Failed to process CREATE/MODIFY for {}: {}", relativePath, ex.getMessage());
-                        return null; // Consume exception
-                    });
-                break;
+                return parserService.parseFileAsync(filePath, basePath)
+                        .thenCompose(segments -> {
+                            if (segments == null || segments.isEmpty()) {
+                                log.info("No segments parsed from {}. Deleting existing entries for this file.", relativePath);
+                                return handleFileDelete(collectionName, relativePath);
+                            }
+                            return embeddingService.generateEmbeddingsAsync(segments)
+                                    .thenCompose(embeddings -> {
+                                        if (embeddings == null || embeddings.size() != segments.size()) {
+                                            log.error("Mismatch between segments ({}) and embeddings ({}) count for {}. Aborting upsert.",
+                                                    segments.size(), embeddings != null ? embeddings.size() : "null", relativePath);
+                                            throw new RuntimeException("Embedding count mismatch during update");
+                                        }
+                                        List<VectorEntry> entries = mapSegmentsToEntries(segments, embeddings);
+                                        if (entries.isEmpty()) {
+                                             log.warn("No valid embeddings generated for segments in {}. Nothing to upsert.", relativePath);
+                                             return CompletableFuture.completedFuture(null);
+                                        }
+                                        log.debug("Upserting {} entries for {}", entries.size(), relativePath);
+                                        // Delete existing before upserting might be safer for MODIFY
+                                        // return handleFileDelete(collectionName, relativePath)
+                                        //        .thenCompose(v -> vectorStoreClient.upsertEmbeddingsAsync(collectionName, entries));
+                                        return vectorStoreClient.upsertEmbeddingsAsync(collectionName, entries);
+                                    });
+                        })
+                        .exceptionally(ex -> {
+                            log.error("Failed to process CREATE/MODIFY update for {}: {}", relativePath, ex.getMessage(), ex);
+                            return null;
+                        });
 
             case DELETE:
                 log.debug("Processing DELETE for {}", relativePath);
-                handleFileDelete(collectionName, relativePath);
-                break;
+                return handleFileDelete(collectionName, relativePath);
+
+            default:
+                log.warn("Unhandled change type: {}", changeType);
+                return CompletableFuture.completedFuture(null);
         }
     }
 
-    /**
-     * Helper method to handle file deletion by removing associated vector entries
-     * 
-     * @param collectionName the ChromaDB collection name
-     * @param relativePath the relative path of the file being deleted
-     */
-    private void handleFileDelete(String collectionName, String relativePath) {
-        // Helper for delete logic
-        Map<String, Object> filter = Map.of("filePath", relativePath);
-        vectorStoreClient.deleteEmbeddingsByMetadataAsync(collectionName, filter)
-            .exceptionally(ex -> {
-                log.error("Failed to delete embeddings for {}: {}", relativePath, ex.getMessage());
-                return null; // Consume exception
-            });
+    private CompletableFuture<Void> handleFileDelete(String collectionName, String relativePath) {
+        Map<String, Object> filter = Map.of("relativeFilePath", relativePath);
+        log.info("Deleting entries for file '{}' from collection '{}'", relativePath, collectionName);
+        return vectorStoreClient.deleteEmbeddingsByMetadataAsync(collectionName, filter)
+                .exceptionally(ex -> {
+                    log.error("Failed to delete embeddings for {}: {}", relativePath, ex.getMessage(), ex);
+                    return null;
+                });
     }
-} 
+
+    private List<VectorEntry> mapSegmentsToEntries(List<CodeSegment> segments, List<List<Float>> embeddings) {
+        return IntStream.range(0, segments.size())
+                .filter(i -> segments.get(i) != null && segments.get(i).getId() != null &&
+                             embeddings.get(i) != null && !embeddings.get(i).isEmpty())
+                .mapToObj(i -> {
+                    CodeSegment segment = segments.get(i);
+                    Map<String, Object> metadata = createMetadataMap(segment);
+                    return VectorEntry.builder()
+                            .id(segment.getId())
+                            .embedding(embeddings.get(i))
+                            .metadata(metadata)
+                            .document(segment.getContent())
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+     private Map<String, Object> createMetadataMap(CodeSegment segment) {
+         Map<String, Object> metadata = new HashMap<>();
+         metadata.put("id", segment.getId());
+         metadata.put("relativeFilePath", segment.getRelativeFilePath());
+         metadata.put("startLine", segment.getStartLine());
+         metadata.put("endLine", segment.getEndLine());
+         metadata.put("type", segment.getType().name());
+         if (segment.getEntityName() != null) {
+             metadata.put("entityName", segment.getEntityName());
+         }
+         if (segment.getMetadata() != null) {
+             segment.getMetadata().forEach((key, value) -> metadata.putIfAbsent(key, value));
+         }
+         return metadata;
+     }
+}

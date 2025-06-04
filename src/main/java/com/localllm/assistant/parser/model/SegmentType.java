@@ -5,7 +5,7 @@ package com.localllm.assistant.parser.model;
  * This helps categorize segments for storage, retrieval, and context construction.
  */
 public enum SegmentType {
-    FILE,             // Represents the entire file content (less common for embedding)
+    FILE,
     PACKAGE_DECLARATION,
     IMPORT_DECLARATION,
     CLASS,            // Class definition
@@ -19,6 +19,12 @@ public enum SegmentType {
     INSTANCE_BLOCK,   // Instance initializer block
     BLOCK_COMMENT,    // Multi-line comment block (if configured to parse)
     LINE_COMMENT,     // Single-line comment (if configured to parse)
-    JAVADOC_COMMENT,  // Javadoc comment block (if configured to parse)
-    UNKNOWN           // Default or fallback type
-} 
+    JAVADOC_COMMENT,  // Javadoc comment block (if configured to parse),
+    MODULE_DECLARATION,
+    MODULE_DIRECTIVE_REQUIRES,
+    MODULE_DIRECTIVE_EXPORTS,
+    MODULE_DIRECTIVE_OPENS,
+    MODULE_DIRECTIVE_USES,
+    MODULE_DIRECTIVE_PROVIDES,
+    UNKNOWN
+}

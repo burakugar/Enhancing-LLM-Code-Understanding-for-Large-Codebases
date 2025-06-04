@@ -2,6 +2,7 @@ package com.localllm.assistant.controller.dto;
 
 import lombok.Builder;
 import lombok.Data;
+
 import java.util.List;
 
 /**
@@ -11,6 +12,9 @@ import java.util.List;
 @Builder
 public class HistoryResponse {
     private String conversationId;
+    private String title;
+    private String createdAt;
+    private String updatedAt;
     private List<HistoryMessage> messages;
 
     /**
@@ -19,9 +23,9 @@ public class HistoryResponse {
     @Data
     @Builder
     public static class HistoryMessage {
-        private String role; // "user" or "assistant"
+        private String role;
         private String content;
-        private String timestamp; // ISO 8601 format
-        private List<QueryResponse.SourceReference> sources; // Optional for assistant messages
+        private String timestamp;
+        private List<QueryResponse.SourceReference> sources;
     }
-} 
+}

@@ -1,57 +1,51 @@
 package com.localllm.assistant.history.model;
 
-import java.time.LocalDateTime;
-import java.util.Map;
-
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-/**
- * Represents a single message within a conversation history, stored in the H2 database.
- */
+import java.time.LocalDateTime;
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity // Mark as JPA entity
-@Table(name = "chat_messages") // Specify table name
+@Entity
+@Table(name = "chat_messages")
 public class ChatMessage {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID) // Use UUID for primary key
+    @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
     @Column(nullable = false, name = "conversation_id")
-    private String conversationId; // Foreign key to Conversation entity
+    private String conversationId;
 
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
-    @Enumerated(EnumType.STRING) // Store enum as string
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private MessageRole role;
 
-    @Lob // Large object for potentially long content
+    @Lob
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
-    /**
-     * Stores metadata related to the message, such as code references used by the assistant.
-     * Stored as JSONB in H2.
-     * Example: {"codeReferences": [{"id": "seg1", "filePath": "..."}, ...]}
-     */
-    @JdbcTypeCode(SqlTypes.JSON) // Hibernate specific type for JSON
-    @Column(columnDefinition = "JSON") // H2 supports JSON type
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "JSON")
     private Map<String, Object> metadata;
-
-    // Optional: Link back to the parent Conversation entity
-    // @ManyToOne(fetch = FetchType.LAZY)
-    // @JoinColumn(name = "conversation_id", insertable = false, updatable = false)
-    // private Conversation conversation;
-} 
+}

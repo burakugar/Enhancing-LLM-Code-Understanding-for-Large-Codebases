@@ -1,10 +1,9 @@
 package com.localllm.assistant.controller;
 
-import java.util.concurrent.CompletableFuture;
-
 import com.localllm.assistant.controller.dto.QueryRequest;
 import com.localllm.assistant.controller.dto.QueryResponse;
 import com.localllm.assistant.service.QueryService;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -13,12 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import lombok.RequiredArgsConstructor;
+import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
 
-/**
- * REST controller for handling code-aware query operations.
- * Provides endpoints to process user queries against the indexed codebase.
- */
 @RestController
 @RequestMapping("/api/v1/query")
 @RequiredArgsConstructor
@@ -27,25 +23,30 @@ public class QueryController {
     private static final Logger log = LoggerFactory.getLogger(QueryController.class);
     private final QueryService queryService;
 
-    /**
-     * Processes a user query, searching for relevant code context and generating a response.
-     *
-     * @param request The query request containing the user's question and optional conversation ID
-     * @return A CompletableFuture containing the response with answer and code references
-     */
     @PostMapping
     public CompletableFuture<ResponseEntity<QueryResponse>> handleQuery(@RequestBody QueryRequest request) {
-        log.info("Received query request for conversation ID: {}", request.getConversationId());
-        
+        log.info("Received query request: {}", request);
+
         if (request.getQuery() == null || request.getQuery().isBlank()) {
-            return CompletableFuture.completedFuture(ResponseEntity.badRequest().build());
+            QueryResponse errorResponse = QueryResponse.builder()
+                .answer("Query cannot be empty.")
+                .conversationId(request.getConversationId())
+                .sources(Collections.emptyList())
+                .build();
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body(errorResponse));
         }
 
-        return queryService.processQuery(request.getQuery(), request.getConversationId())
+        return queryService.processQuery(request)
             .thenApply(ResponseEntity::ok)
             .exceptionally(ex -> {
                 log.error("Error processing query: {}", ex.getMessage(), ex);
-                return ResponseEntity.internalServerError().build();
+                // Construct a proper error QueryResponse
+                QueryResponse errorResponse = QueryResponse.builder()
+                    .answer("An internal error occurred: " + ex.getMessage())
+                    .conversationId(request.getConversationId())
+                    .sources(Collections.emptyList())
+                    .build();
+                return ResponseEntity.internalServerError().body(errorResponse);
             });
     }
-} 
+}

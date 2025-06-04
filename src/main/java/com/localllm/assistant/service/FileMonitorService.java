@@ -41,4 +41,13 @@ public interface FileMonitorService {
      * @return The absolute Path of the monitored codebase directory.
      */
     Path getMonitoredPath();
+
+    /**
+     * Sets a new path to monitor and restarts the monitoring service.
+     * If the new path is the same as the current and the service is running, no action is taken.
+     * This method will stop any current monitoring, update the path, and start monitoring the new path.
+     *
+     * @param newPath The new absolute path to monitor.
+     */
+    void setMonitoredPathAndRestart(Path newPath);
 } 

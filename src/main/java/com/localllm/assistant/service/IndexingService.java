@@ -27,7 +27,4 @@ public interface IndexingService {
      */
     boolean isIndexingInProgress();
 
-    // Optional: Add methods for status tracking, cancellation
-    // IndexingStatus getIndexingStatus(String jobId);
-    // boolean cancelIndexing(String jobId);
-} 
+}

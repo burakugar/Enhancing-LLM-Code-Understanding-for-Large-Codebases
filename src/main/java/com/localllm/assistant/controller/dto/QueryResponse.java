@@ -2,6 +2,7 @@ package com.localllm.assistant.controller.dto;
 
 import lombok.Builder;
 import lombok.Data;
+
 import java.util.List;
 
 /**
@@ -24,7 +25,7 @@ public class QueryResponse {
         private String filePath;
         private int startLine;
         private int endLine;
-        private String snippet; // Include snippet for UI display
-        private double score; // Similarity score/distance
+        private String snippet;
+        private double score;
     }
 } 

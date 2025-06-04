@@ -1,0 +1,204 @@
+<div class="chat-container">
+  <div class="chat-header">
+    <h2>LLM Assistant</h2>
+    <button mat-icon-button [matMenuTriggerFor]="settingsMenu" class="settings-button" aria-label="Chat settings">
+      <mat-icon>settings</mat-icon>
+    </button>
+    <mat-menu #settingsMenu="matMenu" class="settings-menu-panel">
+      <div class="chat-settings-menu" (click)="$event.stopPropagation();">
+        <h3 class="settings-section-title">Chat Model</h3>
+        <mat-form-field appearance="outline">
+          <mat-label>Select Chat Model</mat-label>
+          <mat-select [(ngModel)]="querySettings.modelId" name="model" (ngModelChange)="onSettingChange()">
+            <mat-option *ngFor="let model of availableModels" [value]="model.id">
+              {{ model.name }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <div class="temperature-slider">
+          <label>Temperature: {{ querySettings.temperature | number:'1.1-1' }}</label>
+          <mat-slider
+            min="0"
+            max="2"
+            step="0.1"
+            discrete
+            [displayWith]="formatTemperature"
+            class="temperature-slider">
+            <input matSliderThumb [(ngModel)]="querySettings.temperature" (ngModelChange)="onSettingChangeDebounced()">
+          </mat-slider>
+        </div>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Max New Tokens</mat-label>
+          <input matInput type="number" step="1" min="1" [(ngModel)]="querySettings.llmMaxNewTokens" (ngModelChange)="onSettingChangeDebounced()" name="llmMaxNewTokens">
+        </mat-form-field>
+
+        <mat-divider class="settings-divider"></mat-divider>
+        <h3 class="settings-section-title">Re-ranking</h3>
+
+        <div class="setting-item">
+          <mat-slide-toggle
+            [(ngModel)]="querySettings.useReRanker"
+            (ngModelChange)="onSettingChangeDebounced()"
+            name="useReRanker">
+            Use Re-ranker
+          </mat-slide-toggle>
+        </div>
+
+        <ng-container *ngIf="querySettings.useReRanker">
+          <mat-form-field appearance="outline">
+            <mat-label>Select Re-ranker Model</mat-label>
+            <mat-select [(ngModel)]="querySettings.rerankerModelName" name="rerankerModel" (ngModelChange)="onSettingChange()">
+              <mat-option *ngFor="let model of availableModels" [value]="model.id">
+                {{ model.name }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Re-ranker Top N</mat-label>
+            <input matInput type="number" step="1" min="1" max="10" [(ngModel)]="querySettings.reRankerTopN" (ngModelChange)="onSettingChangeDebounced()" name="reRankerTopN">
+          </mat-form-field>
+        </ng-container>
+
+        <p class="settings-note">Changes are saved automatically.</p>
+      </div>
+    </mat-menu>
+  </div>
+
+  <div class="chat-history-panel" #chatHistoryPanel (scroll)="onChatScroll()">
+    <div *ngIf="!isLoading && messages.length === 0 && !currentConversationId" class="empty-state">
+      <mat-icon>chat_bubble_outline</mat-icon>
+      <h3>Start a new conversation</h3>
+      <p>Ask about your codebase or general programming questions</p>
+    </div>
+
+    <div *ngIf="isLoading && messages.length === 0" class="loading-indicator loading-fullscreen">
+      <mat-spinner diameter="40"></mat-spinner>
+      <span>Loading conversation...</span>
+    </div>
+
+    <div *ngFor="let msg of messages; let i = index"
+         class="message-item"
+         [ngClass]="{
+           'user-message': msg.role === 'user',
+           'assistant-message': msg.role === 'assistant',
+           'system-message': msg.role === 'system',
+           'error-message': msg.role === 'error',
+           'editing': editingMessageIndex === i && msg.role === 'user'
+         }">
+      <div class="message-avatar" *ngIf="msg.role === 'assistant'">
+        <div class="assistant-avatar">
+          <mat-icon>smart_toy</mat-icon>
+        </div>
+      </div>
+      <div class="message-avatar" *ngIf="msg.role === 'user'">
+        <div class="user-avatar">
+          <mat-icon>person</mat-icon>
+        </div>
+      </div>
+
+      <div class="message-content-wrapper">
+        <div class="message-header">
+          <strong class="message-role">
+            {{ msg.role === 'user' ? 'You' :
+            msg.role === 'assistant' ? 'Assistant' :
+              msg.role === 'system' ? 'System' : 'Error' }}
+          </strong>
+          <div class="message-actions" *ngIf="msg.role === 'user'">
+            <button mat-icon-button class="edit-message-btn" *ngIf="editingMessageIndex !== i" (click)="startEditingMessage(i)" aria-label="Edit message">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button class="save-message-btn" *ngIf="editingMessageIndex === i" (click)="saveEditedMessage()" aria-label="Save edited message">
+              <mat-icon>check</mat-icon>
+            </button>
+            <button mat-icon-button class="cancel-edit-btn" *ngIf="editingMessageIndex === i" (click)="cancelEditingMessage()" aria-label="Cancel editing">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        </div>
+
+        <!-- Regular message display -->
+        <ng-container *ngIf="editingMessageIndex !== i || msg.role !== 'user'">
+          <markdown [data]="msg.content" class="markdown-content"></markdown>
+        </ng-container>
+
+        <!-- Edit message textarea -->
+        <mat-form-field *ngIf="editingMessageIndex === i && msg.role === 'user'" class="edit-message-field" appearance="outline">
+          <textarea matInput
+                    [(ngModel)]="editedMessageContent"
+                    cdkTextareaAutosize
+                    cdkAutosizeMinRows="1"
+                    cdkAutosizeMaxRows="8"></textarea>
+        </mat-form-field>
+
+        <div *ngIf="msg.sources && msg.sources.length > 0" class="sources-container">
+          <mat-expansion-panel class="sources-expansion-panel" [expanded]="false">
+            <mat-expansion-panel-header>
+              <mat-panel-title class="sources-panel-title">
+                <mat-icon class="source-icon">code</mat-icon> Sources ({{ msg.sources.length }})
+              </mat-panel-title>
+            </mat-expansion-panel-header>
+            <div class="source-cards-container">
+              <mat-card *ngFor="let source of msg.sources; let i = index" class="source-card">
+                <mat-card-header *ngIf="source.filePath">
+                  <mat-card-title class="source-title">{{ source.filePath }}</mat-card-title>
+                  <mat-card-subtitle *ngIf="source.startLine !== undefined" class="source-subtitle">
+                    Lines: {{ source.startLine }}<span *ngIf="source.endLine && source.endLine !== source.startLine">-{{ source.endLine }}</span>
+                    <span *ngIf="source.score !== undefined" class="source-score"> (Score: {{ source.score | number:'1.2-2' }})</span>
+                  </mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content class="source-content">
+                  <pre><code [highlight]="source.snippet" [language]="source.language || 'plaintext'"></code></pre>
+                </mat-card-content>
+              </mat-card>
+            </div>
+          </mat-expansion-panel>
+        </div>
+      </div>
+
+      <div class="message-timestamp">{{ msg.timestamp | date:'shortTime' }}</div>
+    </div>
+
+    <div *ngIf="isLoading && messages.length > 0" class="loading-indicator">
+      <div class="typing-indicator">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-input-area">
+    <mat-form-field class="chat-input-field" appearance="outline">
+      <mat-label>Type your message...</mat-label>
+      <textarea matInput
+                #messageInput
+                cdkTextareaAutosize
+                #autosize="cdkTextareaAutosize"
+                cdkAutosizeMinRows="1"
+                cdkAutosizeMaxRows="5"
+                [(ngModel)]="userInput"
+                (keydown)="onEnterPress($event)"
+                placeholder="Ask about your codebase or general questions..."
+                [disabled]="isLoading || editingMessageIndex !== -1"></textarea>
+      <button
+        mat-icon-button
+        matSuffix
+        class="send-button"
+        [disabled]="!userInput.trim() || isLoading || editingMessageIndex !== -1"
+        (click)="sendMessage()"
+        [class.send-active]="userInput.trim().length > 0 && !isLoading && editingMessageIndex === -1">
+        <mat-icon>send</mat-icon>
+      </button>
+    </mat-form-field>
+
+    <div class="action-buttons">
+      <button mat-stroked-button (click)="clearChat()" class="clear-button" aria-label="Clear chat history"
+              [disabled]="isLoading || messages.length === 0 || editingMessageIndex !== -1">
+        <mat-icon>delete_sweep</mat-icon> Clear
+      </button>
+    </div>
+  </div>
+</div>

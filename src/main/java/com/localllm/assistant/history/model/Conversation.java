@@ -1,16 +1,18 @@
 package com.localllm.assistant.history.model;
 
-import java.time.LocalDateTime;
-import java.util.Map;
-
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * Represents a single conversation thread containing multiple chat messages.
@@ -24,8 +26,6 @@ import lombok.NoArgsConstructor;
 public class Conversation {
 
     @Id
-    // Assuming conversation ID is generated externally (e.g., by the service layer)
-    // or use @GeneratedValue(strategy = GenerationType.UUID) if DB should generate
     private String id;
 
     @Column(nullable = false)
@@ -54,7 +54,4 @@ public class Conversation {
     @Column(columnDefinition = "JSON")
     private Map<String, Object> metadata;
 
-    // Relationship to messages (optional, can be queried separately)
-    // @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    // private List<ChatMessage> messages;
-} 
+}
